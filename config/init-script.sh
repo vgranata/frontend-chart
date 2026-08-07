@@ -2,10 +2,28 @@
 
 set -x
 
+# Abort the whole init instead of silently continuing on a failed download --
+# a network hiccup here (e.g. right after a minikube restart, before the
+# node's networking is fully up) must not be allowed to fall through into
+# drush writing corrupt/empty data into the database.
+require_pipe_ok() {
+    local status=("${PIPESTATUS[@]}")
+    for s in "${status[@]}"; do
+        if [ "$s" -ne 0 ]; then
+            echo "FATAL: $1 failed (pipe exit codes: ${status[*]}) -- aborting init-script.sh rather than continuing with a possibly incomplete/corrupt result." >&2
+            exit 1
+        fi
+    done
+}
+
 # Install jq if not available
 JQ_URL=https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
 JQ_BIN=/usr/local/bin/jq
 which jq 2>&1 > /dev/null || { curl -sfL $JQ_URL -o $JQ_BIN && chmod +x $JQ_BIN ; }
+if ! jq --version > /dev/null 2>&1; then
+    echo "FATAL: jq is not installed and could not be downloaded from $JQ_URL -- aborting init-script.sh rather than running drush commands we can't correctly script without it." >&2
+    exit 1
+fi
 
 # Generate settings.php from template
 cd /patched-files
@@ -40,6 +58,7 @@ cp settings.php /var/www/mmoda/sites/default/settings.php
 echo "Populating /mmoda-module-src from oda-hub/mmoda-frontend-module"
 curl -sfL https://github.com/oda-hub/mmoda-frontend-module/archive/refs/heads/master.tar.gz \
     | tar xz --strip-components=1 -C /mmoda-module-src
+require_pipe_ok "fetching/extracting oda-hub/mmoda-frontend-module"
 
 sed -i 's@$local_name_resolver_url = "https://resolver-prod.obsuks1.unige.ch/api/v1.1/byname/";@$local_name_resolver_url = "{{ .Values.resolver_endpoint }}";@' /mmoda-module-src/mmoda.nameresolver.inc
 
@@ -51,6 +70,7 @@ sed -i 's@$local_name_resolver_url = "https://resolver-prod.obsuks1.unige.ch/api
 echo "Populating sites/all/libraries/jquery.serializeJSON from marioizquierdo/jquery.serializeJSON"
 curl -sfL https://github.com/marioizquierdo/jquery.serializeJSON/archive/refs/heads/master.tar.gz \
     | tar xz --strip-components=1 -C /var/www/mmoda/sites/all/libraries/jquery.serializeJSON
+require_pipe_ok "fetching/extracting marioizquierdo/jquery.serializeJSON"
 
 MMODA_MODULE_DIR=/var/www/mmoda/sites/all/modules/mmoda
 rm -rf "$MMODA_MODULE_DIR"
@@ -64,6 +84,7 @@ ln -s /mmoda-module-src "$MMODA_MODULE_DIR"
 echo "Populating /bootstrap-mmoda-theme-src from oda-hub/mmoda-frontend-theme"
 curl -sfL https://github.com/oda-hub/mmoda-frontend-theme/archive/refs/heads/master.tar.gz \
     | tar xz --strip-components=1 -C /bootstrap-mmoda-theme-src
+require_pipe_ok "fetching/extracting oda-hub/mmoda-frontend-theme"
 
 BOOTSTRAP_MMODA_THEME_DIR=/var/www/mmoda/sites/all/themes/bootstrap_mmoda
 rm -rf "$BOOTSTRAP_MMODA_THEME_DIR"
@@ -107,10 +128,10 @@ drush en -y jquery_update
 # Drush reinstall all mmoda modules (in case new variables defined)
 ALL_MMODA_MODULES=`drush pm-list --type=module --format=json | jq -r '[ keys[] | select(startswith("mmoda_")) ] | join(",")'`
 ENABLED_MMODA_MODULES=`drush pm-list --type=module --status=enabled --format=json | jq -r '[ keys[] | select(startswith("mmoda_")) ] | join(",")'`
-drush dis -y mmoda 
+drush dis -y mmoda
 drush pm-uninstall -y $ALL_MMODA_MODULES
 drush pm-uninstall -y mmoda
-drush en -y mmoda 
+drush en -y mmoda
 drush en -y $MMODA_MODULES_FORCE_ENABLE
 drush en -y $ENABLED_MMODA_MODULES
 
@@ -140,8 +161,8 @@ emails_to_json="[${emails_to_json:2}]"
 
 # support_email: used in callback, first is from second is to
 support_email_json="[\"$SITE_EMAIL_FROM\", \"${emails_to_arr[0]}\"]"
-drush vget --format=json --exact mmoda_settings | 
-    jq ".support_email = [${support_email_json}] " | 
+drush vget --format=json --exact mmoda_settings |
+    jq ".support_email = [${support_email_json}] " |
     drush vset --format=json --exact --yes mmoda_settings - 2>/dev/null # because we don't want to see all array in log
 
 drush vset --format=json --exact --yes update_notify_emails $emails_to_json
