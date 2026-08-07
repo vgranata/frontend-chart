@@ -86,7 +86,14 @@ done
 cd /var/www/mmoda
 PATH=~/.composer/vendor/bin:$PATH
 
-drush -y updb
+#drush -y updb
+if drush sql-query "SELECT 1 FROM variable LIMIT 1;" > /dev/null 2>&1; then
+    echo "Existing Drupal database detected, running database updates"
+    drush -y updb
+else
+    echo "No existing Drupal database detected, performing fresh site-install"
+    drush -y site-install minimal --account-name=admin --account-pass="$DRUPAL_PW" --site-name="MMODA local dev"
+fi
 
 # jquery_update isn't mmoda_*-prefixed so the enable logic below never
 # touches it, but the theme/JS (BootstrapValidator, DataTables, etc.) require
