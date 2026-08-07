@@ -46,6 +46,8 @@ spec:
         emptyDir: {}
       - name: mmoda-module-dir
         emptyDir: {}
+      - name: jquery-serializejson-lib
+        emptyDir: {}
       - name: bootstrap-mmoda-theme-dir
         emptyDir: {}
       {{- if .Values.extra_instr_dir.enabled }}
@@ -79,6 +81,9 @@ spec:
               readOnly: false
             - name: mmoda-module-dir
               mountPath: /mmoda-module-src
+              readOnly: false
+            - name: jquery-serializejson-lib
+              mountPath: /var/www/mmoda/sites/all/libraries/jquery.serializeJSON
               readOnly: false
             - name: bootstrap-mmoda-theme-dir
               mountPath: /bootstrap-mmoda-theme-src
@@ -266,6 +271,9 @@ spec:
             readOnly: false
           - name: mmoda-module-dir
             mountPath: /mmoda-module-src
+            readOnly: true
+          - name: jquery-serializejson-lib
+            mountPath: /var/www/mmoda/sites/all/libraries/jquery.serializeJSON
             readOnly: true
           - name: bootstrap-mmoda-theme-dir
             mountPath: /bootstrap-mmoda-theme-src

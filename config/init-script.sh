@@ -43,6 +43,15 @@ curl -sfL https://github.com/oda-hub/mmoda-frontend-module/archive/refs/heads/ma
 
 sed -i 's@$local_name_resolver_url = "https://resolver-prod.obsuks1.unige.ch/api/v1.1/byname/";@$local_name_resolver_url = "{{ .Values.resolver_endpoint }}";@' /mmoda-module-src/mmoda.nameresolver.inc
 
+# jquery.serializeJSON is a Libraries API dependency mmoda.module expects at
+# sites/all/libraries/jquery.serializeJSON/jquery.serializejson.min.js, but
+# it's missing from this image's baked-in sites/all/libraries (unlike
+# colorbox, datatables, ckeditor, etc., which are present) -- not shared with
+# any other container path, so no symlink concerns here, just populate it.
+echo "Populating sites/all/libraries/jquery.serializeJSON from marioizquierdo/jquery.serializeJSON"
+curl -sfL https://github.com/marioizquierdo/jquery.serializeJSON/archive/refs/heads/master.tar.gz \
+    | tar xz --strip-components=1 -C /var/www/mmoda/sites/all/libraries/jquery.serializeJSON
+
 MMODA_MODULE_DIR=/var/www/mmoda/sites/all/modules/mmoda
 rm -rf "$MMODA_MODULE_DIR"
 ln -s /mmoda-module-src "$MMODA_MODULE_DIR"
@@ -78,6 +87,15 @@ cd /var/www/mmoda
 PATH=~/.composer/vendor/bin:$PATH
 
 drush -y updb
+
+# jquery_update isn't mmoda_*-prefixed so the enable logic below never
+# touches it, but the theme/JS (BootstrapValidator, DataTables, etc.) require
+# it: Drupal core's own bundled jQuery (1.4.4) predates .on() (added 1.7) and
+# fails their version checks. Production/staging never hit this because their
+# DB already has it enabled from history; a fresh site-install doesn't.
+# Its default version (1.12, see JQUERY_UPDATE_DEFAULT_JQUERY_VERSION) is
+# already sufficient once enabled, no variable configuration needed.
+drush en -y jquery_update
 
 # Drush reinstall all mmoda modules (in case new variables defined)
 ALL_MMODA_MODULES=`drush pm-list --type=module --format=json | jq -r '[ keys[] | select(startswith("mmoda_")) ] | join(",")'`
