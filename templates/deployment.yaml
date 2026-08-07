@@ -44,6 +44,10 @@ spec:
       {{- end }}
       - name: patched-files
         emptyDir: {}
+      - name: mmoda-module-dir
+        emptyDir: {}
+      - name: bootstrap-mmoda-theme-dir
+        emptyDir: {}
       {{- if .Values.extra_instr_dir.enabled }}
       - name: instruments-dir
         persistentVolumeClaim:
@@ -72,6 +76,12 @@ spec:
               readOnly: false
             - name: frontend-files
               mountPath: /var/www/mmoda/sites/default/files
+              readOnly: false
+            - name: mmoda-module-dir
+              mountPath: /mmoda-module-src
+              readOnly: false
+            - name: bootstrap-mmoda-theme-dir
+              mountPath: /bootstrap-mmoda-theme-src
               readOnly: false
             {{- if .Values.extra_instr_dir.enabled }}
             - name: instruments-dir
@@ -197,6 +207,24 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -ex
+              # sites/all/modules/mmoda ships broken (self-referential symlink) in
+              # some image tags; point it at the real checkout the init container
+              # populated into the shared /mmoda-module-src volume instead. See
+              # config/init-script.sh for the matching fix on the init container side.
+              rm -rf /var/www/mmoda/sites/all/modules/mmoda
+              ln -s /mmoda-module-src /var/www/mmoda/sites/all/modules/mmoda
+              # sites/all/themes/bootstrap_mmoda ships broken (symlink to
+              # ../../../../bootstrap_mmoda/, which doesn't exist) in some image
+              # tags -- same defect class as the module symlink above. Point it at
+              # the real checkout the init container populated into the shared
+              # /bootstrap-mmoda-theme-src volume instead.
+              rm -rf /var/www/mmoda/sites/all/themes/bootstrap_mmoda
+              ln -s /bootstrap-mmoda-theme-src /var/www/mmoda/sites/all/themes/bootstrap_mmoda
+              exec docker-php-entrypoint apache2-foreground
           ports:
             - name: http
               containerPort: 80
@@ -232,13 +260,16 @@ spec:
           - name: patched-files
             mountPath: /var/www/mmoda/sites/default/settings.php
             subPath: settings.php
-            readOnly: true       
-          - name: patched-files
-            mountPath: /var/www/mmoda/sites/all/modules/mmoda/mmoda.nameresolver.inc
-            subPath: mmoda.nameresolver.inc         
+            readOnly: true
           - name: frontend-files
             mountPath: /var/www/mmoda/sites/default/files
             readOnly: false
+          - name: mmoda-module-dir
+            mountPath: /mmoda-module-src
+            readOnly: true
+          - name: bootstrap-mmoda-theme-dir
+            mountPath: /bootstrap-mmoda-theme-src
+            readOnly: true
           # {{ if .Values.dev_space_volume.enabled }}
           # - name: frontend-dev
           #   mountPath: /var/www/mmooda/dev

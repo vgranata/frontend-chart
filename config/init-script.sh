@@ -23,9 +23,42 @@ echo '#####'
 cat settings.php
 echo '#####'
 
-cp settings.php /var/www/mmoda/sites/default/settings.php 
-cp /var/www/mmoda/sites/all/modules/mmoda/mmoda.nameresolver.inc .
-sed -i 's@$local_name_resolver_url = "https://resolver-prod.obsuks1.unige.ch/api/v1.1/byname/";@$local_name_resolver_url = "{{ .Values.resolver_endpoint }}";@'  mmoda.nameresolver.inc
+cp settings.php /var/www/mmoda/sites/default/settings.php
+
+# sites/all/modules/mmoda is a broken self-referential symlink in some
+# published image tags (-> ../../../../mmoda, resolving back to the Drupal
+# root itself /var/www/mmoda). /mmoda-module-src is a shared emptyDir volume
+# mounted at a *separate*, non-symlinked path in both this init container and
+# the main container (see deployment.yaml) -- mounting a volume directly at
+# the symlinked path itself was tried and is unsafe: the mount follows the
+# symlink to its resolved target and ends up shadowing the whole
+# /var/www/mmoda tree instead of just the module directory. Populate the
+# clean path instead, patch the resolver URL there once so both containers
+# see the patched version, then point each container's own
+# sites/all/modules/mmoda at it via a fresh symlink (done separately for the
+# main container in deployment.yaml, since it doesn't run this script).
+echo "Populating /mmoda-module-src from oda-hub/mmoda-frontend-module"
+curl -sfL https://github.com/oda-hub/mmoda-frontend-module/archive/refs/heads/master.tar.gz \
+    | tar xz --strip-components=1 -C /mmoda-module-src
+
+sed -i 's@$local_name_resolver_url = "https://resolver-prod.obsuks1.unige.ch/api/v1.1/byname/";@$local_name_resolver_url = "{{ .Values.resolver_endpoint }}";@' /mmoda-module-src/mmoda.nameresolver.inc
+
+MMODA_MODULE_DIR=/var/www/mmoda/sites/all/modules/mmoda
+rm -rf "$MMODA_MODULE_DIR"
+ln -s /mmoda-module-src "$MMODA_MODULE_DIR"
+
+# sites/all/themes/bootstrap_mmoda is a broken symlink in some published image
+# tags too (-> ../../../../bootstrap_mmoda/, which doesn't exist at all) --
+# same defect class as the mmoda module symlink above, same fix: populate a
+# separate, non-symlinked shared path and re-point the symlink at it (done
+# separately for the main container in deployment.yaml).
+echo "Populating /bootstrap-mmoda-theme-src from oda-hub/mmoda-frontend-theme"
+curl -sfL https://github.com/oda-hub/mmoda-frontend-theme/archive/refs/heads/master.tar.gz \
+    | tar xz --strip-components=1 -C /bootstrap-mmoda-theme-src
+
+BOOTSTRAP_MMODA_THEME_DIR=/var/www/mmoda/sites/all/themes/bootstrap_mmoda
+rm -rf "$BOOTSTRAP_MMODA_THEME_DIR"
+ln -s /bootstrap-mmoda-theme-src "$BOOTSTRAP_MMODA_THEME_DIR"
 
 cp -rfv /frontend-default-files/* /var/www/mmoda/sites/default/files
 
