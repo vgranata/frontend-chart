@@ -205,17 +205,17 @@ spec:
             httpGet:
               path: {{ .Values.mmoda_prefix }}
               port: http
-            failureThreshold: 5
-            initialDelaySeconds: 15
-            periodSeconds: 60
+            failureThreshold: 20
+            initialDelaySeconds: 30
+            periodSeconds: 30
             timeoutSeconds: 60
           readinessProbe:
             httpGet:
               path: {{ .Values.mmoda_prefix }}
               port: http
-            failureThreshold: 5
-            initialDelaySeconds: 5
-            periodSeconds: 60
+            failureThreshold: 20
+            initialDelaySeconds: 30
+            periodSeconds: 30
             timeoutSeconds: 60
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
